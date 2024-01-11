@@ -305,6 +305,16 @@ def resolve_regs(*args: str | int):
     return [resolve_reg(x) for x in args]
 
 
+@add_to_commands("{")
+def br_l(_: int, *args: str | int):
+    return BinReturn("")
+
+
+@add_to_commands("}")
+def br_r(_: int, *args: str | int):
+    return BinReturn("")
+
+
 @add_to_commands("reg{:S:} = reg{:S:}")
 def mov(offset: int, *args: str | int):
     n, m = resolve_regs(*args)
@@ -313,6 +323,55 @@ def mov(offset: int, *args: str | int):
     res = ""
     for a, b in zip(mb(m, r), mb(n, r)):
         res += a + b
+    return BinReturn(res)
+
+
+@add_to_commands("reg{:S:} := {:X|N:}")
+def mov_const_effective(offset: int, _n: str, const: int):
+    n = resolve_reg(_n)
+    res = ""
+
+    if debug:
+        print(f"// reg{n} := {const} start")
+
+    if debug:
+        print("// init 0")
+
+    def movf(a: int, b: int):
+        nonlocal offset
+        res = mov.func(offset, a, b).bin
+        offset += len(res)
+        return res
+
+    # init 0
+    res += movf(a_reg, reg_const_0)
+    res += movf(b_reg, reg_const_0)
+
+    has_1 = False
+
+    # for each bit
+    for bit in mb(const, sizeofreg):
+        # *2
+        if has_1:
+            if debug:
+                print("// *2")
+            res += movf(b_reg, a_reg)
+            res += movf(a_reg, sum_reg)
+
+        # +1
+        if bit == "1":
+            if debug:
+                print(f"// +1")
+            has_1 = True
+            res += movf(b_reg, reg_const_1)
+            res += movf(a_reg, sum_reg)
+
+    # store the final result
+    res += movf(n, a_reg)
+
+    if debug:
+        print(f"// reg{n} = {const} end")
+
     return BinReturn(res)
 
 
@@ -332,10 +391,6 @@ def mov_const(offset: int, _n: str, const: int):
         res = mov.func(offset, a, b).bin
         offset += len(res)
         return res
-
-    # init 0
-    res += movf(a_reg, reg_const_0)
-    res += movf(b_reg, reg_const_0)
 
     # for each bit
     for bit in mb(const, sizeofreg):
