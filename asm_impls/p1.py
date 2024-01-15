@@ -2,76 +2,28 @@ from dataclasses import dataclass
 from math import ceil
 import re
 import sys
-from typing import Any, Callable, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
 
 @dataclass
 class Return:
-    content: str
+    content: List[int]
     new_labels_offsets: List[int]
 
-    @property
-    def hex(self) -> str:
-        raise NotImplementedError()
-
-    @property
-    def bin(self) -> str:
-        raise NotImplementedError()
-
-    @property
-    def get(self) -> str:
-        raise NotImplementedError()
-
-
-@dataclass
-class HexReturn(Return):
-    def __init__(self, content: str, new_labels_offsets: List[int] | None = None):
-        # assert content is of hex symbols
+    def __init__(
+        self,
+        content: List[int] = [],
+        new_labels_offsets: List[int] = [],
+    ):
         self.content = content
-        self.new_labels_offsets = (
-            new_labels_offsets if new_labels_offsets is not None else []
-        )
-
-    @property
-    def bin(self):
-        return bin(int(self.content, 16))[2:]
-
-    @property
-    def hex(self):
-        return self.content
-
-    @property
-    def get(self):
-        return "0x" + self.content
-
-
-@dataclass
-class BinReturn(Return):
-    def __init__(self, content: str, new_labels_offsets: List[int] | None = None):
-        # assert content is of binary symbols
-        self.content = content
-        self.new_labels_offsets = (
-            new_labels_offsets if new_labels_offsets is not None else []
-        )
-
-    @property
-    def bin(self):
-        return self.content
-
-    @property
-    def hex(self):
-        return hex(int(self.content, 2))[2:]
-
-    @property
-    def get(self):
-        return "0xb" + self.content
+        self.new_labels_offsets = new_labels_offsets
 
 
 @dataclass
 class Command:
     regex: re.Pattern[Any]
     func: Callable[..., Return]
-    eval: Callable[[int, Tuple[str], List[int]], Tuple[str, List[int]]]
+    eval: Callable[[int, Tuple[str], List[int]], Tuple[List[int], List[int]]]
     info: Callable[[Tuple[str]], Tuple[List[str], List[str]]]
 
 
@@ -140,6 +92,24 @@ param_resolvers.append(
     )
 )
 
+# basic registers
+param_resolvers.append(
+    ParamT(
+        selector=re.compile(r"R"),
+        resolve=lambda sm, arg, lbls: arg if arg in regs else None,
+        label=lambda sm, arg: None,
+    )
+)
+
+# variables
+param_resolvers.append(
+    ParamT(
+        selector=re.compile(r"V"),
+        resolve=lambda sm, arg, lbls: arg if arg.startswith("var") else None,
+        label=lambda sm, arg: None,
+    )
+)
+
 # any string
 param_resolvers.append(
     ParamT(
@@ -166,6 +136,19 @@ param_resolvers.append(
         label=lambda sm, arg: Label.use(_extract_use_label(arg))
         if arg.startswith(".")
         else None,
+    )
+)
+
+AUGMENTATTIONS: Dict[str, int] = {}
+
+# use augmentations
+param_resolvers.append(
+    ParamT(
+        selector=re.compile(r"E"),
+        resolve=lambda sm, arg, lbls: AUGMENTATTIONS[arg[1:]]
+        if arg.startswith("&")
+        else None,
+        label=lambda sm, arg: None,
     )
 )
 
@@ -231,7 +214,7 @@ def add_to_commands(pattern: str) -> Callable[..., Command]:
                 else:
                     raise ValueError(f"invalid value : {arg}")
             res = func(offset, *cargs)
-            return res.bin, res.new_labels_offsets
+            return res.content, res.new_labels_offsets
 
         def labels_wrapper(args: Tuple[str]):
             new_labels: List[str] = []
@@ -263,41 +246,42 @@ def mb(n: int, size: int):
 
 reg_const_0 = 0
 reg_const_1 = 1
-src_reg = 2
-dst_reg = 3
-ip_reg = 4
-else_reg = 5
-if_reg = 6
-cond_reg = 7
-a_reg = 8
-b_reg = 9
-sum_reg = 10
+addr_reg = 2
+ip_reg = 3
+else_reg = 4
+if_reg = 5
+cond_reg = 6
+a_reg = 7
+b_reg = 8
+sum_reg = 9
 
 regs = {
-    "Const0": reg_const_0,
-    "Const1": reg_const_1,
-    "Src": src_reg,
-    "Dst": dst_reg,
-    "IP": ip_reg,
-    "Else": else_reg,
-    "If": if_reg,
-    "Cond": cond_reg,
-    "A": a_reg,
-    "B": b_reg,
-    "Sum": sum_reg,
+    "const 0": reg_const_0,
+    "const 1": reg_const_1,
+    "addr": addr_reg,
+    "ip": ip_reg,
+    "else": else_reg,
+    "if": if_reg,
+    "cond": cond_reg,
+    "a": a_reg,
+    "b": b_reg,
+    "sum": sum_reg,
 }
 
 
 def resolve_reg(s: str | int):
     if isinstance(s, int):
         v = s
-    else:
-        if s in regs:
-            return regs[s]
-        si = int(s)
+    elif s in regs:
+        return regs[s]
+    elif s.startswith("var"):
+        si = int(s[3:])
         v = si + len(regs)
-        if v > 15:
-            raise ValueError(f"No reg{si}")
+        if v > registers_count - 1:
+            raise ValueError(f"No var{si}")
+    else:
+        raise ValueError(f"Invalid token <{s}>")
+
     return v
 
 
@@ -307,29 +291,26 @@ def resolve_regs(*args: str | int):
 
 @add_to_commands("{")
 def br_l(_: int, *args: str | int):
-    return BinReturn("")
+    return Return()
 
 
 @add_to_commands("}")
 def br_r(_: int, *args: str | int):
-    return BinReturn("")
+    return Return()
 
 
-@add_to_commands("reg{:S:} = reg{:S:}")
+@add_to_commands("{:R|V:} = {:R|V:}")
 def mov(offset: int, *args: str | int):
     n, m = resolve_regs(*args)
     if debug:
         print(f"reg{n} = reg{m} at {hex(offset)}")
-    res = ""
-    for a, b in zip(mb(m, r), mb(n, r)):
-        res += a + b
-    return BinReturn(res)
+    return Return(content=[int(mb(n, r) + mb(m, r), base=2)])
 
 
-@add_to_commands("reg{:S:} := {:X|N:}")
+@add_to_commands("{:S:} := {:X|E|N:}")
 def mov_const_effective(offset: int, _n: str, const: int):
     n = resolve_reg(_n)
-    res = ""
+    res: List[int] = []
 
     if debug:
         print(f"// reg{n} := {const} start")
@@ -339,7 +320,7 @@ def mov_const_effective(offset: int, _n: str, const: int):
 
     def movf(a: int, b: int):
         nonlocal offset
-        res = mov.func(offset, a, b).bin
+        res = mov.func(offset, a, b).content
         offset += len(res)
         return res
 
@@ -361,7 +342,7 @@ def mov_const_effective(offset: int, _n: str, const: int):
         # +1
         if bit == "1":
             if debug:
-                print(f"// +1")
+                print("// +1")
             has_1 = True
             res += movf(b_reg, reg_const_1)
             res += movf(a_reg, sum_reg)
@@ -372,13 +353,13 @@ def mov_const_effective(offset: int, _n: str, const: int):
     if debug:
         print(f"// reg{n} = {const} end")
 
-    return BinReturn(res)
+    return Return(res)
 
 
-@add_to_commands("reg{:S:} = {:X|N:}")
+@add_to_commands("{:S:} =-= {:X|E|N:}")
 def mov_const(offset: int, _n: str, const: int):
     n = resolve_reg(_n)
-    res = ""
+    res: List[int] = []
 
     if debug:
         print(f"// reg{n} = {const} start")
@@ -388,7 +369,7 @@ def mov_const(offset: int, _n: str, const: int):
 
     def movf(a: int, b: int):
         nonlocal offset
-        res = mov.func(offset, a, b).bin
+        res = mov.func(offset, a, b).content
         offset += len(res)
         return res
 
@@ -415,30 +396,12 @@ def mov_const(offset: int, _n: str, const: int):
     if debug:
         print(f"// reg{n} = {const} end")
 
-    return BinReturn(res)
-
-
-@add_to_commands('#store_ascii "{:S:}"')
-def store_ascii(_, s: str):
-    s = s.encode().decode("unicode-escape")
-    res = ""
-    for ch in s:
-        d = f"{ord(ch):07b}"
-        if debug:
-            print(d)
-        res += d
-    return BinReturn(res)
-
-
-@add_to_commands("#store 0xb{:S:}")
-def store_bin(_, s: str):
-    assert all(ch in ["0", "1"] for ch in s)
-    return BinReturn(s)
+    return Return(res)
 
 
 @add_to_commands("{:L:}")
 def decl_label(offset: int):
-    return BinReturn("", [offset])
+    return Return([], [offset])
 
 
 labels_decls = {}
@@ -474,10 +437,19 @@ if __name__ == "__main__":
 
     registers_count = 2**r
     sizeofreg = int(_m)
-    sizeofmem = 2**sizeofreg
+    sizeofmem = (
+        2**sizeofreg
+    )  # number of instructions avaliable to be stored in ROM / number of bits in RAM
+
+    for e in rest:
+        e = e.strip()
+        if e.startswith("--aug-"):
+            e = e[6:]
+            aug, val = e.split("=")
+            AUGMENTATTIONS[aug] = int(val)
 
     # fictive run
-    offset = 4
+    offset = 0
     with open(filename, "r") as f:
         for line in f:
             line = line.split("//")[0].strip()
@@ -487,13 +459,13 @@ if __name__ == "__main__":
             offset += len(ret)
 
     if len(rest) > 0:
-        debug = rest[0] == "--debug"
+        debug = "--debug" in rest
 
     if debug:
         print([(k, hex(v), v) for k, v in labels_decls.items()])
 
     # actual run
-    content = "0100"
+    content: List[int] = []
     with open(filename, "r") as f:
         for line in f:
             src = line.strip()
@@ -504,30 +476,20 @@ if __name__ == "__main__":
             content += ret
 
     match outformat:
-        case "bin":
-            # Adjust the last byte and write to the binary file
-            while len(content) % 8 != 0:
-                content += "0"  # Fill the remaining bits with zeros
-
-            # Convert binary content to bytes
-            binary_bytes = bytes(
-                int(content[i : i + 8], 2) for i in range(0, len(content), 8)
-            )
-
-            # Write to the binary file
-            with open(filename + ".bin", "wb") as binary_file:
-                binary_file.write(binary_bytes)
-
         case "sim":
             with open(filename + ".sim", "wt") as f:
                 f.write("v2.0 raw\n")
-                f.write(" ".join(content))
+                f.write(" ".join(map(lambda x: hex(x)[2:], content)))
 
         case _:
             raise ValueError("unknown out format")
 
-    smb = sizeofmem // 8
-    lb = int(ceil(len(content) / 8))
-    print("Memory size:", smb, "bytes")
-    print("Executable size:", format_bytes(lb), f"[ {int(100*lb/smb)} % ]")
-    print("Free space remaining:", format_bytes(smb - lb))
+    rams = int(ceil(sizeofmem / 8))  # RAM size in bytes
+    psbi = len(content)  # program size in instructions
+    print(
+        "Executable size:",
+        psbi,
+        "instructions",
+        f"[ {int(100*psbi/sizeofmem)} % ]",
+    )
+    print("Avaliable RAM size:", sizeofmem, "bits", "=", format_bytes(rams))
