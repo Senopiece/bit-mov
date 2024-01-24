@@ -244,28 +244,20 @@ def mb(n: int, size: int):
     return f"{n:0{size}b}"
 
 
-reg_const_0 = 0
-reg_const_1 = 1
-addr_reg = 2
-ip_reg = 3
-else_reg = 4
-if_reg = 5
-cond_reg = 6
-a_reg = 7
-b_reg = 8
-sum_reg = 9
+ip_reg = 0
+addr_reg = 1
+else_reg = 2
+cond_reg = 3
+neg_reg = 4
+acc_reg = 5
 
 regs = {
-    "const 0": reg_const_0,
-    "const 1": reg_const_1,
-    "addr": addr_reg,
     "ip": ip_reg,
+    "addr": addr_reg,
     "else": else_reg,
-    "if": if_reg,
     "cond": cond_reg,
-    "a": a_reg,
-    "b": b_reg,
-    "sum": sum_reg,
+    "neg": neg_reg,
+    "acc": acc_reg,
 }
 
 
@@ -299,9 +291,36 @@ def br_r(_: int, *args: str | int):
     return Return()
 
 
+@add_to_commands("{:R|V:} = 1")
+def store1(offset: int, *args: str | int):
+    (n,) = resolve_regs(*args)
+    assert n not in (ip_reg, cond_reg, acc_reg, neg_reg)
+    if debug:
+        print(f"reg{n} = 1 at {hex(offset)}")
+    return Return(content=[int(mb(n, r) + mb(n, r), base=2)])
+
+
+@add_to_commands("acc += {:R|V:}")
+def acc(offset: int, *args: str | int):
+    (n,) = resolve_regs(*args)
+    if debug:
+        print(f"acc += reg{n} at {hex(offset)}")
+    return Return(content=[int(mb(acc_reg, r) + mb(n, r), base=2)])
+
+
+@add_to_commands("neg = -{:R|V:}")
+def neg(offset: int, *args: str | int):
+    (n,) = resolve_regs(*args)
+    if debug:
+        print(f"neg = -reg{n} at {hex(offset)}")
+    return Return(content=[int(mb(neg_reg, r) + mb(n, r), base=2)])
+
+
 @add_to_commands("{:R|V:} = {:R|V:}")
 def mov(offset: int, *args: str | int):
     n, m = resolve_regs(*args)
+    assert n not in (acc_reg, neg_reg)
+    assert n != m or n in (ip_reg, cond_reg)
     if debug:
         print(f"reg{n} = reg{m} at {hex(offset)}")
     return Return(content=[int(mb(n, r) + mb(m, r), base=2)])
@@ -312,11 +331,14 @@ def mov_const_effective(offset: int, _n: str, const: int):
     n = resolve_reg(_n)
     res: List[int] = []
 
+    # NOTE: hardcoded for now
+    reg_const_1 = resolve_reg("var1")
+
     if debug:
         print(f"// reg{n} := {const} start")
 
     if debug:
-        print("// init 0")
+        print("// init acc = 0")
 
     def movf(a: int, b: int):
         nonlocal offset
@@ -324,9 +346,21 @@ def mov_const_effective(offset: int, _n: str, const: int):
         offset += len(res)
         return res
 
-    # init 0
-    res += movf(a_reg, reg_const_0)
-    res += movf(b_reg, reg_const_0)
+    def negf(a: int):
+        nonlocal offset
+        res = neg.func(offset, a).content
+        offset += len(res)
+        return res
+
+    def accf(a: int):
+        nonlocal offset
+        res = acc.func(offset, a).content
+        offset += len(res)
+        return res
+
+    # init acc = 0
+    res += negf(acc_reg)
+    res += accf(neg_reg)
 
     has_1 = False
 
@@ -336,19 +370,17 @@ def mov_const_effective(offset: int, _n: str, const: int):
         if has_1:
             if debug:
                 print("// *2")
-            res += movf(b_reg, a_reg)
-            res += movf(a_reg, sum_reg)
+            res += accf(acc_reg)
 
         # +1
         if bit == "1":
             if debug:
                 print("// +1")
             has_1 = True
-            res += movf(b_reg, reg_const_1)
-            res += movf(a_reg, sum_reg)
+            res += accf(reg_const_1)
 
     # store the final result
-    res += movf(n, a_reg)
+    res += movf(n, acc_reg)
 
     if debug:
         print(f"// reg{n} = {const} end")
@@ -361,15 +393,21 @@ def mov_const(offset: int, _n: str, const: int):
     n = resolve_reg(_n)
     res: List[int] = []
 
-    if debug:
-        print(f"// reg{n} = {const} start")
+    # NOTE: hardcoded for now
+    reg_const_1 = resolve_reg("var1")
 
     if debug:
-        print("// init 0")
+        print(f"// reg{n} = {const} start")
 
     def movf(a: int, b: int):
         nonlocal offset
         res = mov.func(offset, a, b).content
+        offset += len(res)
+        return res
+
+    def accf(a: int):
+        nonlocal offset
+        res = acc.func(offset, a).content
         offset += len(res)
         return res
 
@@ -379,19 +417,20 @@ def mov_const(offset: int, _n: str, const: int):
             print("// *2")
 
         # *2
-        res += movf(b_reg, a_reg)
-        res += movf(a_reg, sum_reg)
+        res += accf(acc_reg)
 
         if debug:
             print(f"// +{1 if bit == '1' else 0}")
 
-        # +1
+        # maybe +1
         # TODO: can be reduced on zeros if allow macros with dynamic size
-        res += movf(b_reg, reg_const_1 if bit == "1" else reg_const_0)
-        res += movf(a_reg, sum_reg)
+        if bit == "1":
+            res += accf(reg_const_1)
+        else:
+            res += movf(ip_reg, ip_reg)
 
     # store the final result
-    res += movf(n, a_reg)
+    res += movf(n, acc_reg)
 
     if debug:
         print(f"// reg{n} = {const} end")
