@@ -244,20 +244,20 @@ def mb(n: int, size: int):
     return f"{n:0{size}b}"
 
 
-ip_reg = 0
-addr_reg = 1
-else_reg = 2
-cond_reg = 3
-neg_reg = 4
-acc_reg = 5
+acc_reg = 0
+ip_reg = 1
+neg_reg = 2
+addr_reg = 3
+cond_reg = 4
+else_reg = 5
 
 regs = {
-    "ip": ip_reg,
-    "addr": addr_reg,
-    "else": else_reg,
-    "cond": cond_reg,
-    "neg": neg_reg,
     "acc": acc_reg,
+    "ip": ip_reg,
+    "neg": neg_reg,
+    "addr": addr_reg,
+    "cond": cond_reg,
+    "else": else_reg,
 }
 
 
