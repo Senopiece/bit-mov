@@ -14,6 +14,10 @@
 // - what to do with `cond = cond`
 // - there is no way to move register contents to memory. Is it even needed? (whereas there is a way to move data from memory to a register)
 
+// disscusion field:
+// - neg now is used so it produces a number that is 0 when summed up with the src number, but it can be replaced with the literally bitwize flip
+//  (seems that with bitwize flip a code will be bigger, but surely the machine will have less transistors, still the minimum propogation delay will surely not be affected. so the question is will really code increase?)
+
 var1 = 1 // hardcoded requirement of `:=` and `=-=`, also used throughout this program (must not be modified from this moment e.g. var1 = 1 everywhere)
 
 // jmp to init
