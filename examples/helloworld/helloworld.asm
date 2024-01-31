@@ -10,9 +10,8 @@
 // - addr = cond - it's using bit from the previous addr and if need to change, changes addr on the next instruction
 // - cond = cond - will cause undefined behavior
 
-// there are still two issues:
+// there are still a issue:
 // - what to do with `cond = cond`
-// - there is no way to move register contents to memory. Is it even needed? (whereas there is a way to move data from memory to a register)
 
 // disscusion field:
 // - neg now is used so it produces a number that is 0 when summed up with the src number, but it can be replaced with the literally bitwize flip
