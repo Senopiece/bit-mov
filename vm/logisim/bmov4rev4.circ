@@ -1066,10 +1066,6 @@
       <a name="appearance" val="classic"/>
       <a name="label" val="DataIn"/>
     </comp>
-    <comp lib="0" loc="(960,400)" name="Constant">
-      <a name="facing" val="north"/>
-      <a name="value" val="0x0"/>
-    </comp>
     <comp lib="0" loc="(970,310)" name="Pin">
       <a name="appearance" val="classic"/>
       <a name="facing" val="south"/>
@@ -1180,8 +1176,10 @@
     <wire from="(800,520)" to="(810,520)"/>
     <wire from="(840,530)" to="(850,530)"/>
     <wire from="(860,440)" to="(870,440)"/>
-    <wire from="(870,360)" to="(870,440)"/>
+    <wire from="(870,360)" to="(870,410)"/>
     <wire from="(870,360)" to="(960,360)"/>
+    <wire from="(870,410)" to="(870,440)"/>
+    <wire from="(870,410)" to="(960,410)"/>
     <wire from="(870,490)" to="(870,510)"/>
     <wire from="(870,490)" to="(890,490)"/>
     <wire from="(880,340)" to="(880,480)"/>
@@ -1198,6 +1196,7 @@
     <wire from="(930,430)" to="(930,440)"/>
     <wire from="(930,430)" to="(960,430)"/>
     <wire from="(960,350)" to="(960,360)"/>
+    <wire from="(960,400)" to="(960,410)"/>
     <wire from="(960,430)" to="(960,440)"/>
     <wire from="(960,440)" to="(980,440)"/>
     <wire from="(960,450)" to="(970,450)"/>
