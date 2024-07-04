@@ -10,7 +10,7 @@
 // - addr = cond - it's using bit from the previous addr and if need to change, changes addr on the next instruction
 // - cond = cond - will cause undefined behavior
 
-// there are still a issue:
+// there is still a issue:
 // - what to do with `cond = cond`
 
 // disscusion field:
